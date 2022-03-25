@@ -7,11 +7,16 @@ use winit::{
 };
 
 struct State {
+    #[allow(dead_code)]
+    instance: wgpu::Instance,
+    #[allow(dead_code)]
+    adapter: wgpu::Adapter,
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
+    clear_color: wgpu::Color,
 }
 
 impl State {
@@ -38,8 +43,7 @@ impl State {
                     features: wgpu::Features::empty(),
                     limits: wgpu::Limits::default(),
                 },
-                // Some(&std::path::Path::new("trace")), // Trace path
-                None,
+                None, // Trace path
             )
             .await
             .unwrap();
@@ -53,11 +57,16 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let clear_color = wgpu::Color::BLACK;
+
         Self {
+            instance,
+            adapter,
             surface,
             device,
             queue,
             config,
+            clear_color,
             size,
         }
     }
@@ -71,9 +80,19 @@ impl State {
         }
     }
 
-    #[allow(unused_variables)]
     fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        match event {
+            WindowEvent::CursorMoved { position, .. } => {
+                self.clear_color = wgpu::Color {
+                    r: position.x as f64 / self.size.width as f64,
+                    g: position.y as f64 / self.size.height as f64,
+                    b: 1.0,
+                    a: 1.0,
+                };
+                true
+            }
+            _ => false,
+        }
     }
 
     fn update(&mut self) {}
@@ -97,12 +116,7 @@ impl State {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(self.clear_color),
                         store: true,
                     },
                 }],
@@ -123,7 +137,7 @@ fn main() {
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // State::new uses async code, so we're going to wait for it to finish
-    let mut state: State = pollster::block_on(State::new(&window));
+    let mut state = pollster::block_on(State::new(&window));
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -132,7 +146,6 @@ fn main() {
                 window_id,
             } if window_id == window.id() => {
                 if !state.input(event) {
-                    // UPDATED!
                     match event {
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
@@ -148,7 +161,7 @@ fn main() {
                             state.resize(*physical_size);
                         }
                         WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                            // new_inner_size is &&mut so w have to dereference it twice
+                            // new_inner_size is &mut so w have to dereference it twice
                             state.resize(**new_inner_size);
                         }
                         _ => {}
@@ -167,9 +180,7 @@ fn main() {
                     Err(e) => eprintln!("{:?}", e),
                 }
             }
-            Event::RedrawEventsCleared => {
-                // RedrawRequested will only trigger once, unless we manually
-                // request it.
+            Event::MainEventsCleared => {
                 window.request_redraw();
             }
             _ => {}
